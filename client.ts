@@ -187,6 +187,6 @@ client.on("data",async(data:string)=>{
 })
 
 client.connect(PORT,HOST,()=>{
-    console.log("connection done")
+    console.log("connected server!")
     client.write(set_format({type:"first-connection",data:{}}))
 })
