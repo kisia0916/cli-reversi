@@ -16,7 +16,6 @@ interface roomType {
     name:string,
     user:string[],
     turn:number,
-    passCounter:number,
     stage:number[][]
 }
 
@@ -35,12 +34,11 @@ const generateStage = ()=>{
         [0,0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0,0],
-        [0,0,0,2,1,1,0,0],
+        [0,0,0,1,2,0,0,0],
         [0,0,0,2,1,0,0,0],
         [0,0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0,0],
-
     ]
 }
 const reversePice = (x:number,y:number,stage:number[][],color:number)=>{
@@ -72,8 +70,48 @@ const reversePice = (x:number,y:number,stage:number[][],color:number)=>{
     console.log(canPush)
     return [canPush,map]
 }
+const checkPass = (map:number[][],color:number)=>{
+    let caPut:number = 0
+    for (let c = 0;2>c;c++){
+        if (caPut === 0){
+            for (let y = 0;8>y;y++){
+                for (let x = 0;8>x;x++){
+                    if (map[y][x] === 0){
+                        let ban:number[] = []
+                        for (let i = 1;8>i;i++){
+                            let co = 0
+                            for (let s = -1;1>=s;s++){
+                                for (let k = -1;1>=k;k++){
+                                    co+=1
+                                    if (ban.indexOf(co) == -1){
+                                        const nx = x+k*i
+                                        const ny = y+s*i
+                                        if (nx>=0 && nx<8 && ny>=0 && ny<8 && !(s == 0 && k == 0)){
+                                            if (map[ny][nx] === color && i > 1){
+                                                caPut = 1
+                                            }else if (map[ny][nx] === 0 || (i == 1 && map[ny][nx] === Math.abs((3*c)-color))){
+                                                ban.push(co)
+                                            }
+                                        } 
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }else{
+            return 3
+        }
+    }
+    if (caPut === 0){
+        return "end"
+    }else{
+        return 1
+    }
+}
 
-const checkWin = (stage:number[][],counter:number) =>{
+const checkWin = (stage:number[][],endFlg:boolean) =>{
     let black:number = 0
     let white:number = 0
     for (let i = 0;8>i;i++){
@@ -85,7 +123,7 @@ const checkWin = (stage:number[][],counter:number) =>{
             }
         }
     }
-    if (counter === 2 || black+white === 64 || black === 0 || white === 0){
+    if (black+white === 64 || black === 0 || white === 0 || endFlg){
         return [black,white]
     }
     return false
@@ -133,7 +171,6 @@ server.on("connection",(socket)=>{
                     name:getData.data.roomName,
                     user:[userId],
                     turn:1,
-                    passCounter:0,
                     stage:generateStage()
                 }
                 roomList.push(newRoom)
@@ -142,47 +179,46 @@ server.on("connection",(socket)=>{
             }
         }else if (getData.type === "done_game_setting"){
             const joinRoom = startRoomList.find((i)=>i.id === getData.data.roomId)
-            socket.write(set_format({type:"move_game",data:{roomInfo:joinRoom}}))
+            socket.write(set_format({type:"move_game",data:{roomInfo:joinRoom,state:"done"}}))
         }else if (getData.type === "put_piece"){
             const roomIndex = startRoomList.findIndex((i)=>i.id === joinRoom)
             if (roomIndex !== -1){
-                if (getData.data.pos !== "pass"){
+                if (startRoomList[roomIndex].stage[getData.data.pos[1]-1][getData.data.pos[0]-1] === 0){
                     // startRoomList[roomIndex].stage[getData.data.pos[1]-1][getData.data.pos[0]-1] = startRoomList[roomIndex].turn
                     const isPut = reversePice(getData.data.pos[0]-1,getData.data.pos[1]-1,startRoomList[roomIndex].stage,startRoomList[roomIndex].turn)
                     if (isPut[0] === 0){
                         startRoomList[roomIndex].stage[getData.data.pos[1]-1][getData.data.pos[0]-1] = 0
-                        socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex]}}))
+                        socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex],state:"done"}}))
                     }else{
-                        startRoomList[roomIndex].passCounter=0
-                        let game_end:any = checkWin(startRoomList[roomIndex].stage,startRoomList[roomIndex].passCounter)
-                        if (!game_end){
-                            startRoomList[roomIndex].turn = 3 - startRoomList[roomIndex].turn
-                            //p1socket
-                            userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex]}}))
-                            //p2socket
-                            userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex]}}))
+                        const checkPassResult = checkPass(startRoomList[roomIndex].stage,3-startRoomList[roomIndex].turn)
+                        if (checkPassResult === 1){
+                                //p1socket
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex],state:"pass"}}))
+                                //p2socket
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex],state:"pass"}}))
+                        }else if (checkPassResult === "end"){
+                                let game_end2:any = checkWin(startRoomList[roomIndex].stage,true)
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"game_end",data:{result:game_end2,roomInfo:startRoomList[roomIndex],state:"done"}}))
+                                //p2socket
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"game_end",data:{result:game_end2,roomInfo:startRoomList[roomIndex],state:"done"}}))
+                                startRoomList.splice(roomIndex,1)
                         }else{
-                            userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"game_end",data:{result:game_end,roomInfo:startRoomList[roomIndex],state:"done"}}))
-                            //p2socket
-                            userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"game_end",data:{result:game_end,roomInfo:startRoomList[roomIndex],state:"done"}}))
-                            startRoomList.splice(roomIndex,1)
-                        }
-                    }
+                            let game_end:any = checkWin(startRoomList[roomIndex].stage,false)
+                            if (!game_end){
+                                startRoomList[roomIndex].turn = 3 - startRoomList[roomIndex].turn
+                                //p1socket
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex],state:"done"}}))
+                                //p2socket
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex],state:"done"}}))
+                            }else{
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"game_end",data:{result:game_end,roomInfo:startRoomList[roomIndex],state:"done"}}))
+                                //p2socket
+                                userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"game_end",data:{result:game_end,roomInfo:startRoomList[roomIndex],state:"done"}}))
+                                startRoomList.splice(roomIndex,1)
+                            }
+                    }}
                 }else{
-                    startRoomList[roomIndex].passCounter+=1
-                    let game_end:any = checkWin(startRoomList[roomIndex].stage,startRoomList[roomIndex].passCounter)
-                    if (!game_end){
-                        startRoomList[roomIndex].turn = 3 - startRoomList[roomIndex].turn
-                        //p1socket
-                        userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex]}}))
-                        //p2socket
-                        userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex]}}))
-                    }else{
-                        userList.find((i)=>i.id === startRoomList[roomIndex].user[0])?.socket.write(set_format({type:"game_end",data:{result:game_end,roomInfo:startRoomList[roomIndex],state:"done"}}))
-                        //p2socket
-                        userList.find((i)=>i.id === startRoomList[roomIndex].user[1])?.socket.write(set_format({type:"game_end",data:{result:game_end,roomInfo:startRoomList[roomIndex],state:"done"}}))
-                        startRoomList.splice(roomIndex,1)
-                    }
+                    socket.write(set_format({type:"move_game",data:{roomInfo:startRoomList[roomIndex],state:"done"}}))
                 }
             }else{
                 //error
@@ -191,6 +227,8 @@ server.on("connection",(socket)=>{
             joinRoom = ""
             const send_data = {userInfo:userId,roomList:roomList}
             socket.write(set_format({type:"first-user-info",data:send_data}))
+        }else if (getData.type === "get_room_list"){
+            socket.write(set_format({type:"room_list_data",data:{roomList:roomList}}))
         }
     })
     const disconnectUser = ()=>{
@@ -202,14 +240,14 @@ server.on("connection",(socket)=>{
         if (nowJoinStartedRoomIndex !== -1){
             const otherId =  startRoomList[nowJoinStartedRoomIndex].user[1 - startRoomList[nowJoinStartedRoomIndex].user.findIndex((i)=>i === userId)]
             const otherUser = userList.find((i)=>i.id === otherId)
-            otherUser?.socket.write(set_format({type:"game_end",data:{state:"disconnection"}}))
+            otherUser?.socket.write(set_format({type:"game_end",data:{state:"disconnection",roomInfo:startRoomList[nowJoinStartedRoomIndex]}}))
             startRoomList.splice(nowJoinStartedRoomIndex,1)
         }
         const userIndex = userList.findIndex((i)=>i.id === userId)
         userList.splice(userIndex,1)
     }
     socket.on("end",()=>{
-        console.log("discon")
+        disconnectUser()
     })
     socket.on("error",(error)=>{
         //切断処理

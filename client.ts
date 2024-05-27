@@ -1,5 +1,5 @@
 import { copyFileSync, promises, read } from "fs"
-import net from "net"
+import net, { SocketAddress } from "net"
 import * as readline from "readline"
 import { data_format } from "./data-format"
 
@@ -46,7 +46,7 @@ const inputAnalyze = (type:string,getData:any,ans:any)=>{
                 return ""
             }
         }else if (type === "title_mode_select"){
-            if (ans === "j" || ans === "c"){
+            if (ans === "j" || ans === "c" || ans === "r"){
                 return ans
             }else{
                 return ""
@@ -58,15 +58,21 @@ const inputAnalyze = (type:string,getData:any,ans:any)=>{
                 return ""
             }
         }else if (type === "put_piece"){
-            let ansList = ans.split(" ")
-            if (ansList.length === 2){
-                const x = Math.floor(Number(ansList[0]))
-                const y = Math.floor(Number(ansList[1]))
-                if (x>0 && x<9 && y>0 && y<9){
-                    return [x,y]
+            if (!isDisconnect){
+                let ansList = ans.split(" ")
+                if (ansList.length === 2){
+                    const x = Math.floor(Number(ansList[0]))
+                    const y = Math.floor(Number(ansList[1]))
+                    if (x>0 && x<9 && y>0 && y<9){
+                        return [x,y]
+                    }
                 }
-            }else if (ans === "pass"){
-                return "pass"
+            }else{
+                isDisconnect = false
+                console.log("other player disconnected... you win!")
+                console.log("")
+                client.write(set_format({type:"game_reset",data:{}}))
+                return "disconnect"
             }
             return ""
         }
@@ -101,12 +107,13 @@ let userId:string = ""
 let joinRoom:string = ""
 let nowMode:string = ""
 let color:number = 0
+let isDisconnect:boolean = false
 
 const first_page_fun = async(getData:any)=>{
     joinRoom = ""
     nowMode = ""
     color = 0
-    nowMode = await inputFun("Join (j) or Create (c) : ","title_mode_select",getData)
+    nowMode = await inputFun("Join (j) or Create (c) or Reload(r) : ","title_mode_select",getData)
     if (nowMode === "j"){
         const roomIndex = await inputFun("Select room (exit -1): ","select_room_index",getData)
         if (roomIndex === -1){
@@ -114,14 +121,16 @@ const first_page_fun = async(getData:any)=>{
         }else{
             client.write(set_format({type:"room_join_request",data:{roomId:getData.roomList[roomIndex-1].id}}))
         }
-    }else{
+    }else if (nowMode === "c"){
         const createRoomName = await inputFun("Room name (exit -1) : ","room_name",getData)
         if (createRoomName === "-1"){
             first_page_fun(getData)
         }else{
             client.write(set_format({type:"create_room_request",data:{roomName:createRoomName}}))
         }
-    }     
+    }else if (nowMode === "r"){
+        client.write(set_format({type:"get_room_list",data:{}}))
+    }
 }
 
 client.on("data",async(data:string)=>{
@@ -140,8 +149,10 @@ client.on("data",async(data:string)=>{
     }else if (getData.type === "move_game"){
         writeStage(getData.data.roomInfo.stage)
         if (getData.data.roomInfo.turn === color){
-            const putPos = await inputFun("Place a piece (x y or pass) : ","put_piece",getData)
+            const putPos = await inputFun("Place a piece (x y) : ","put_piece",getData)
             client.write(set_format({type:"put_piece",data:{pos:putPos}}))
+        }else if (getData.data.state === "pass"){
+            console.log("you pass")
         }
     }else if (getData.type === "game_end"){
         if (getData.data.state === "done"){
@@ -155,13 +166,21 @@ client.on("data",async(data:string)=>{
                     console.log("You win!")
                 }else{console.log("You lose....")}
             }else{
+                console.log(getData.data.result)
                 console.log("draw...")
             }
+            client.write(set_format({type:"game_reset",data:{}}))
         }else{
-            console.log("")
-            console.log("Other player disconnected... you win!")
+            isDisconnect = true
+            if (getData.data.roomInfo.turn !== color){
+                console.log("other player disconnected... you win!")
+                console.log("")
+                client.write(set_format({type:"game_reset",data:{}}))
+            }
         }
-        client.write(set_format({type:"game_reset",data:{}}))
+    }else if (getData.type === "room_list_data"){
+        writeRoomList(getData.data.roomList)
+        first_page_fun({roomList:getData.data.roomList})
     }
 })
 
