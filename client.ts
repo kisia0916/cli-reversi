@@ -145,6 +145,8 @@ client.on("data",async(data:string)=>{
     }else if (getData.type === "start_game"){
         joinRoom = getData.data.roomId
         color = getData.data.color
+        const pice = ["○","●"]
+        console.log(`You are ${pice[color-1]}`)
         client.write(set_format({type:"done_game_setting",data:{roomId:joinRoom}}))
     }else if (getData.type === "move_game"){
         writeStage(getData.data.roomInfo.stage)
