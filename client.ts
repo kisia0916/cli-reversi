@@ -1,10 +1,14 @@
 import { copyFileSync, promises, read } from "fs"
 import net, { SocketAddress } from "net"
 import * as readline from "readline"
-import { data_format } from "./data-format"
 
 const HOST = "localhost"
 const PORT = 3000
+
+interface data_format {
+    type:string,
+    data:any
+}
 
 interface roomType {
     id:string,
