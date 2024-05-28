@@ -1,9 +1,8 @@
 import { copyFileSync, promises, read } from "fs"
 import net, { SocketAddress } from "net"
 import * as readline from "readline"
+import * as fs from "fs"
 
-const HOST = "localhost"
-const PORT = 3000
 
 interface data_format {
     type:string,
@@ -30,7 +29,7 @@ const writeRoomList = (list:roomType[]) =>{
     console.log("-------------------------------")
 }
 const writeStage = (stage:number[][])=>{
-    const stageElement = ["-","○","●"]
+    const stageElement = ["-","x","o"]
     console.log("  1 2 3 4 5 6 7 8")
     stage.forEach((i,index)=>{
         let line:string = `${index+1}`
@@ -149,7 +148,7 @@ client.on("data",async(data:string)=>{
     }else if (getData.type === "start_game"){
         joinRoom = getData.data.roomId
         color = getData.data.color
-        const pice = ["○","●"]
+        const pice = ["x","o"]
         console.log(`You are ${pice[color-1]}`)
         client.write(set_format({type:"done_game_setting",data:{roomId:joinRoom}}))
     }else if (getData.type === "move_game"){
@@ -189,6 +188,10 @@ client.on("data",async(data:string)=>{
         first_page_fun({roomList:getData.data.roomList})
     }
 })
+
+const netconfig = fs.readFileSync("./netconfig.txt","utf-8").split(":")
+const HOST = netconfig[0]
+const PORT = Number(netconfig[1])
 
 client.connect(PORT,HOST,()=>{
     console.log("connected server!")
