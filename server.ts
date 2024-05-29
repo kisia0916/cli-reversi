@@ -1,11 +1,16 @@
 import net from "net"
 import * as uuid from "uuid" 
-import { data_format } from "./data-format"
 
 const HOST = "localhost"
 const PORT = 3000
 
 const server = net.createServer()
+
+
+interface data_format {
+    type:string,
+    data:any
+}
 
 interface userType {
     id:string,
